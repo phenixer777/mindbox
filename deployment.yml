@@ -1,0 +1,104 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: my-deployment
+spec:
+#quantitiy of pods in replica
+  replicas: 4
+  #number of seconds for which a newly created Pod should be ready
+  minReadySeconds: 10
+  selector:
+    matchLabels:
+      app: my-app
+  #application update strategy 
+  strategy:
+    rollingupdate:
+      #number of pods that can be created above the desired amount of pods during an update
+      maxSurge: 1
+      #The number of pods that can be unavailable during the update process
+      maxUnavailable: 1
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: my-app
+    spec:    
+      containers:
+        #Docker image
+      - image: quay.io/testing-farm/ngnix:1.16.1
+        name: nginx
+        ports:
+        - containerPort: 80
+        resources:
+          #request (desired) resources
+          requests:
+            cpu: 100m
+            memory: 128M
+          #maximum reosurces
+          limits:
+            cpu: 200m
+            memory: 192M
+        #mount point of nginx config file
+        volumeMounts:
+        - name: config
+          mountPath: /etc/nginx/conf.d/
+      volumes:
+      - name: config
+        configMap:
+          name: my-configmap         
+---
+apiVersion: batch/v1beta1
+kind: CronJob
+metadata:
+  name: scale-down-job
+spec:
+  # run every working day at 8pm 
+  schedule: "0 20 * * 1-5"
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          # restartPolicy option
+          restartPolicy: OnFailure
+          containers:
+          - image: quay.io/testing-farm/ngnix:1.16.1
+            name: nginx
+            ports:
+            - containerPort: 80
+            imagePullPolicy: IfNotPresent
+            args: 
+              - scale
+              - deployment
+              - -l
+              - environment=dev
+              - --replicas=2
+---
+apiVersion: batch/v1beta1
+kind: CronJob
+metadata:
+  name: scale-up-job
+spec:
+  #run every working day at 6am 
+  schedule: "0 6 * * 1-5" # <7>
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          # restartPolicy option
+          restartPolicy: OnFailure
+          containers:
+          - image: quay.io/testing-farm/ngnix:1.16.1
+            name: nginx
+            ports:
+            - containerPort: 80
+            imagePullPolicy: IfNotPresent
+            args: 
+              - scale
+              - deployment
+              - -l
+              - environment=dev
+              - --replicas=4
